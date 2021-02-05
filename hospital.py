@@ -67,9 +67,11 @@ def get_hospital_department_list(hos_code):
 
             if len(str(target_department)) > 0 and str(dep_name).__contains__(target_department):
                 department_code_info = {'firstDeptCode': dep_1_code, 'secondDeptCode': dep_2_code}
+                register.code_department_map[hos_code] = department_code_info
                 duty_resp = register.get_department_duty_list(None, hos_code, department_code_info)
                 available_map = {}
-                register.parse_hospital_department_duty_info(code, department_code_info, duty_resp, deadline, available_map)
+                register.parse_hospital_department_duty_info(code, department_code_info,
+                                                             duty_resp, deadline, available_map)
                 break
 
 
@@ -85,6 +87,7 @@ if __name__ == '__main__':
         if len(str(keyword)) > 0:
             resp = get_hospital_list(keyword)
             if api.is_success_response(resp):
+                register.parse_hospital_list(resp)
                 data = resp['data']
                 if isinstance(data, dict) and 'list' in data:
                     hos_list = data['list']
@@ -95,4 +98,3 @@ if __name__ == '__main__':
                             hospital_code_name_map[code] = name
                             print(hospital)
                             get_hospital_department_list(code)
-

@@ -1,10 +1,9 @@
 import json
-import time
-import urllib.parse
-import urllib.request
-
-import win32api
-import win32con
+import os
+import platform
+if 'Windows' == platform.system():
+    import win32api
+    import win32con
 
 import api
 import api_config
@@ -15,7 +14,7 @@ NEED_SMS_CODE = 4
 NO_SMS_CODE = 2
 
 # 当前就诊人信息
-g_patient_info = None
+g_patient_info = {}
 
 # 医院编码-科室 map
 code_department_map = {}
@@ -51,26 +50,28 @@ def get_hospitals_by_area_and_topic(topic_key, area_id, keyword=''):
 def parse_hospital_list(response):
     global code_department_map
     global code_name_map
-    if isinstance(response, dict):
-        if 'resCode' in response and response['resCode'] != 0:
-            return False
-        if 'data' in response:
-            data = response['data']
-            if isinstance(data, dict):
-                if 'list' in data:
-                    data_list = data['list']
-                    if isinstance(data_list, list):
-                        for item in data_list:
-                            code = None
-                            if 'hosCode' in item:
-                                code = item['hosCode']
-                                code_name_map[code] = item['hosName']
-                            if 'depts' in item:
-                                departments = item['depts']
-                                if isinstance(departments, list):
-                                    for dep in departments:
-                                        code_department_map[code] = dep
-                                        break
+    if api.is_success_response(response):
+        data = response['data']
+        if isinstance(data, dict):
+            if 'list' in data:
+                data_list = data['list']
+                if isinstance(data_list, list):
+                    for item in data_list:
+                        code = None
+                        if 'hosCode' in item:
+                            code = item['hosCode']
+                            code_name_map[code] = item['hosName']
+                        elif 'code' in item:
+                            code = item['code']
+                            code_name_map[code] = item['name']
+                        if 'depts' in item:
+                            departments = item['depts']
+                            if isinstance(departments, list):
+                                for dep in departments:
+                                    code_department_map[code] = dep
+                                    break
+    else:
+        return False
     return True
 
 
@@ -117,14 +118,22 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                         # status != 'SOLD_OUT' and status != 'TOMORROW_OPEN':
                         if status == 'AVAILABLE':
                             available_map[code_name_map[code]] = date
-                            win32api.MessageBox(0, f'{date} {code_name_map[code]} 可预约',
-                                                "MessageBox",
-                                                win32con.MB_OK | win32con.MB_ICONWARNING)
+                            if 'Darwin' == platform.system():
+                                message = f'{date} {code_name_map[code]} 可预约'
+                                title = ''
+                                command = f'''
+                                    osascript -e 'display notification "{message}" with title "{title}"'
+                                '''
+                                os.system(command)
+                            elif 'Windows' == platform.system():
+                                win32api.MessageBox(0, f'{date} {code_name_map[code]} 可预约',
+                                                    "MessageBox",
+                                                    win32con.MB_OK | win32con.MB_ICONWARNING)
                             duty_info = get_department_day_duty_detail(date, g_topic_key, code, department)
                             duty_detail = parse_department_day_duty_info(code_name_map[code], duty_info)
                             if duty_detail is not None:
                                 key = duty_detail['uniqProductKey']
-                                confirm_resp = register_confirm(key, g_topic_key, code, department)
+                                confirm_resp = register_confirm(key, date, g_topic_key, code, department)
                                 parse_register_confirm_info(confirm_resp, code, date, department, key)
 
 
@@ -158,7 +167,7 @@ def parse_department_day_duty_info(hospital, duty_info):
                                     # 医生头衔 普通医生或专家
                                     doctor_title_name = detail_item['doctorTitleName']
                                     # key 上午下午不一样
-                                    unique_product_key = detail_item['uniqProductKey']
+                                    # unique_product_key = detail_item['uniqProductKey']
                                     if 'MORNING' == duty_code:
                                         print(f'{hospital} 上午 {doctor_title_name} 可预约')
                                     elif 'AFTERNOON' == duty_code:
@@ -190,7 +199,6 @@ def parse_register_confirm_info(resp, code, date, department, key):
             name = data['hospitalName']
             depart = data['departmentName']
             title = data['doctorTitleName']
-            date = data['visitTime']
             fee = data['serviceFee']
             print(f'{date} {name} {depart} {title} {fee}')
             if 'dataItem' in data:
@@ -251,7 +259,7 @@ def get_sms_verify_code(key):
 
 # 保存订单确认
 def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
-    if g_patient_info is None or g_patient_info['cardList'] is None or len(g_patient_info['cardList']) == 0:
+    if len(g_patient_info) == 0 or g_patient_info['cardList'] is None or len(g_patient_info['cardList']) == 0:
         print('无就诊卡相关信息')
         return False
     card = g_patient_info['cardList'][0]
@@ -284,7 +292,7 @@ def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
                     if '请重新选择就诊时段' == msg:
                         print('需要重新选择就诊时段')
                         resp = get_department_day_duty_detail(date, g_topic_key, code, department)
-                        duty_detail = parse_department_day_duty_info(resp)
+                        duty_detail = parse_department_day_duty_info(code_name_map[code], resp)
                         if 'period' in duty_detail:
                             period = duty_detail['period']
                             if isinstance(period, dict):
