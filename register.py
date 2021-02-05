@@ -119,8 +119,8 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                         if status == 'AVAILABLE':
                             available_map[code_name_map[code]] = date
                             if 'Darwin' == platform.system():
-                                message = f'{date} {code_name_map[code]} 可预约'
-                                title = ''
+                                message = f'{date} {code_name_map[code]}'
+                                title = '可预约'
                                 command = f'''
                                     osascript -e 'display notification "{message}" with title "{title}"'
                                 '''
