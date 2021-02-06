@@ -1,13 +1,9 @@
 import json
-import os
-import platform
-if 'Windows' == platform.system():
-    import win32api
-    import win32con
 
 import api
 import api_config
 import handle_sms_code
+import notification_util
 
 # 需要短信验证码
 NEED_SMS_CODE = 4
@@ -121,23 +117,14 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                         # status != 'SOLD_OUT' and status != 'TOMORROW_OPEN':
                         if status == 'AVAILABLE':
                             available_map[code_name_map[code]] = date
-                            if 'Darwin' == platform.system():
-                                message = f'{date} {code_name_map[code]}'
-                                title = '可预约'
-                                command = f'''
-                                    osascript -e 'display notification "{message}" with title "{title}"'
-                                '''
-                                os.system(command)
-                            elif 'Windows' == platform.system():
-                                win32api.MessageBox(0, f'{date} {code_name_map[code]} 可预约',
-                                                    "MessageBox",
-                                                    win32con.MB_OK | win32con.MB_ICONWARNING)
+                            notification_util.show_notification('可预约', f'{date} {code_name_map[code]} 可预约')
                             duty_info = get_department_day_duty_detail(date, g_topic_key, code, department)
                             duty_detail = parse_department_day_duty_info(code_name_map[code], duty_info)
                             if duty_detail is not None:
                                 key = duty_detail['uniqProductKey']
                                 confirm_resp = register_confirm(key, date, g_topic_key, code, department)
                                 parse_register_confirm_info(confirm_resp, code, date, department, key)
+                                break
 
 
 # 获取科室当天预约信息
@@ -147,8 +134,10 @@ def get_department_day_duty_detail(date, topic_key, hospital_code, department):
         'firstDeptCode': department['firstDeptCode'],
         'secondDeptCode': department['secondDeptCode'],
         'target': date,
-        'topicKey': topic_key,
+        # 'topicKey': topic_key,
     }
+    if topic_key is not None:
+        post_content_map['topicKey'] = topic_key
     post_content = bytes(json.dumps(post_content_map), encoding='utf-8')
     return api.api_call(api_config.API_114_DETAIL, post_data=post_content)
 
@@ -186,10 +175,12 @@ def register_confirm(key, date, topic_key, hospital_code, department):
         'firstDeptCode': department['firstDeptCode'],
         'secondDeptCode': department['secondDeptCode'],
         'target': date,
-        'topicKey': topic_key,
+        # 'topicKey': topic_key,
         'uniqProductKey': key,
         'dutyTime': 0
     }
+    if topic_key is not None:
+        post_content_map['topicKey'] = topic_key
     post_content = bytes(json.dumps(post_content_map), encoding='utf-8')
     return api.api_call(api_config.API_114_CONFIRM, post_data=post_content)
 
@@ -213,6 +204,7 @@ def parse_register_confirm_info(resp, code, date, department, key):
                         sms_code_resp = get_sms_verify_code(key)
                         if api.is_success_response(sms_code_resp):
                             # 等待验证码
+                            notification_util.show_notification('短信验证码', '请注意查看短信验证码并输入')
                             g_order_save_info['code'] = code
                             g_order_save_info['department'] = department
                             g_order_save_info['date'] = date
@@ -305,7 +297,7 @@ def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
             if 'state' in data:
                 state = data['state']
                 if state == 'OK' or state == 'NEED_CONFIRM':
-                    save_order(code, department, date, key)
+                    save_order(code, department, date, key, sms_code)
                     return True
                 elif state == 'TOAST':
                     msg = data['msg']
@@ -322,7 +314,7 @@ def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
 
 
 # 保存订单
-def save_order(code, department, date, key):
+def save_order(code, department, date, key, sms_code=''):
     card = g_patient_info['cardList'][0]
     post_content_map = {
         'hosCode': code,
@@ -332,13 +324,15 @@ def save_order(code, department, date, key):
         'uniqProductKey': key,
         'cardType': card['cardType'],
         'cardNo': card['cardNo'],
-        'smsCode': '1234',
+        'smsCode': sms_code,
         'jytCardId': '',
         'hospitalCardId': '',
         'phone': g_patient_info['phone'],
         'dutyTime': 0,
-        'orderFrom': str(g_topic_key).split('-')[1]
     }
+    if g_topic_key is not None and len(str(g_topic_key).split('-')) > 1:
+        post_content_map['orderFrom'] = str(g_topic_key).split('-')[1]
+
     post_content = bytes(json.dumps(post_content_map), encoding='utf-8')
     resp = api.api_call(api_config.API_114_ORDER_SAVE, post_data=post_content)
     if api.is_success_response(resp):
@@ -349,6 +343,7 @@ def save_order(code, department, date, key):
             order_detail(code, order_no)
     else:
         msg = resp['msg']
+        notification_util.show_notification('预约失败', msg)
         print(f'提交预约单失败 : {msg}')
 
 
