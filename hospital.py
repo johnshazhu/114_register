@@ -80,6 +80,7 @@ if __name__ == '__main__':
 
     api.load_config_info()
     deadline = api.config_dict['deadline']
+    register.get_patient_list()
     # 检查是否配置指定医院
     keyword = ''
     if KEYWORD in api.config_dict:

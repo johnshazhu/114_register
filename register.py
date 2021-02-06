@@ -7,6 +7,7 @@ if 'Windows' == platform.system():
 
 import api
 import api_config
+import handle_sms_code
 
 # 需要短信验证码
 NEED_SMS_CODE = 4
@@ -15,6 +16,8 @@ NO_SMS_CODE = 2
 
 # 当前就诊人信息
 g_patient_info = {}
+# 预约下单时的信息
+g_order_save_info = {}
 
 # 医院编码-科室 map
 code_department_map = {}
@@ -207,9 +210,14 @@ def parse_register_confirm_info(resp, code, date, department, key):
                     sms_code = data_item['smsCode']
                     if sms_code == NEED_SMS_CODE:
                         print('需要短信验证码')
-                        get_sms_verify_code(key)
-                        # 等待验证码
-                        # check_save_order(code, department, date, key, '1234')
+                        sms_code_resp = get_sms_verify_code(key)
+                        if api.is_success_response(sms_code_resp):
+                            # 等待验证码
+                            g_order_save_info['code'] = code
+                            g_order_save_info['department'] = department
+                            g_order_save_info['date'] = date
+                            g_order_save_info['key'] = key
+                            handle_sms_code.input_sms_code(submit_sms_code_callback)
                     else:
                         # 不需要短信验证码
                         resp = order_check()
@@ -255,6 +263,18 @@ def get_sms_verify_code(key):
             'uniqProductKey': key,
     }
     return api.api_call(api_config.API_114_VERIFY_CODE, query)
+
+
+def submit_sms_code_callback():
+    sms_code = handle_sms_code.get_sms_code()
+    print(f'submit_sms_code_callback {sms_code}')
+    print(g_order_save_info)
+    handle_sms_code.destroy()
+    check_save_order(g_order_save_info['code'],
+                     g_order_save_info['department'],
+                     g_order_save_info['date'],
+                     g_order_save_info['key'], sms_code)
+    g_order_save_info.clear()
 
 
 # 保存订单确认
