@@ -111,6 +111,11 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                         # print(f'{day}')
                         status = day['status']
                         date = day['dutyDate']
+                        # 指定就要挂某一天的号时
+                        if 'date' in api.config_dict and len(str(api.config_dict['date'])) == 10 and\
+                                date != api.config_dict['date']:
+                            continue
+
                         if date > deadline:
                             continue
                         # if status != 'NO_INVENTORY' and
