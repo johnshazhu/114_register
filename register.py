@@ -108,7 +108,7 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
             if isinstance(calendars, list):
                 for day in calendars:
                     if isinstance(day, dict) and 'status' in day:
-                        print(f'{day}')
+                        # print(f'{day}')
                         status = day['status']
                         date = day['dutyDate']
                         if date > deadline:
@@ -124,7 +124,8 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                                 key = duty_detail['uniqProductKey']
                                 confirm_resp = register_confirm(key, date, g_topic_key, code, department)
                                 parse_register_confirm_info(confirm_resp, code, date, department, key)
-                                break
+                                return True
+    return False
 
 
 # 获取科室当天预约信息
@@ -194,7 +195,8 @@ def parse_register_confirm_info(resp, code, date, department, key):
             depart = data['departmentName']
             title = data['doctorTitleName']
             fee = data['serviceFee']
-            print(f'{date} {name} {depart} {title} {fee}')
+            visit_time = data['visitTime']
+            print(f'{visit_time} {name} {depart} {title} {fee}')
             if 'dataItem' in data:
                 data_item = data['dataItem']
                 if isinstance(data_item, dict):
