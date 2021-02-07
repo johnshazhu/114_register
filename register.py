@@ -126,8 +126,20 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                             duty_info = get_department_day_duty_detail(date, g_topic_key, code, department)
                             duty_detail = parse_department_day_duty_info(code_name_map[code], duty_info)
                             if duty_detail is not None:
+                                duty_time = '0'
                                 key = duty_detail['uniqProductKey']
-                                confirm_resp = register_confirm(key, date, g_topic_key, code, department)
+                                if 'period' in duty_detail:
+                                    period = duty_detail['period']
+                                    if isinstance(period, dict):
+                                        duty_time = period['dutyTime']
+                                        print(f'dict 就诊时段 {duty_time}')
+                                    elif isinstance(period, list):
+                                        for period_item in period:
+                                            duty_time = period_item['dutyTime']
+                                            print(f'list 就诊时段 {duty_time}')
+                                            break
+                                g_order_save_info['dutyTime'] = duty_time
+                                confirm_resp = register_confirm(key, date, g_topic_key, code, department, duty_time)
                                 parse_register_confirm_info(confirm_resp, code, date, department, key)
                                 return True
     return False
@@ -161,7 +173,12 @@ def parse_department_day_duty_info(hospital, duty_info):
                     for detail_item in item['detail']:
                         if isinstance(detail_item, dict):
                             if 'fcode' in detail_item and 'ncode' in detail_item:
-                                if detail_item['fcode'] != detail_item['ncode']:
+                                fcode = detail_item['fcode']
+                                ncode = detail_item['ncode']
+                                if fcode != ncode:
+                                    if str(fcode).endswith(str(ncode)):
+                                        print(f'{hospital} {duty_code} fcode endwith ncode')
+                                        continue
                                     # 医生头衔 普通医生或专家
                                     doctor_title_name = detail_item['doctorTitleName']
                                     # key 上午下午不一样
@@ -175,7 +192,7 @@ def parse_department_day_duty_info(hospital, duty_info):
 
 
 # 可预约后，进行预约确认
-def register_confirm(key, date, topic_key, hospital_code, department):
+def register_confirm(key, date, topic_key, hospital_code, department, duty_time='0'):
     post_content_map = {
         'hosCode': hospital_code,
         'firstDeptCode': department['firstDeptCode'],
@@ -183,7 +200,7 @@ def register_confirm(key, date, topic_key, hospital_code, department):
         'target': date,
         # 'topicKey': topic_key,
         'uniqProductKey': key,
-        'dutyTime': 0
+        'dutyTime': duty_time
     }
     if topic_key is not None:
         post_content_map['topicKey'] = topic_key
@@ -225,7 +242,10 @@ def parse_register_confirm_info(resp, code, date, department, key):
                             if isinstance(data, dict) and 'pass' in data:
                                 result = data['pass']
                                 if result or result == 'true':
-                                    check_save_order(code, department, date, key)
+                                    duty_time = '0'
+                                    if 'dutyTime' in g_order_save_info:
+                                        duty_time = g_order_save_info['dutyTime']
+                                    check_save_order(code, department, date, key, duty_time)
 
 
 # 获取就诊卡信息
@@ -269,10 +289,15 @@ def submit_sms_code_callback():
     print(f'submit_sms_code_callback {sms_code}')
     print(g_order_save_info)
     handle_sms_code.destroy()
+    duty_time = '0'
+    if 'dutyTime' in g_order_save_info:
+        duty_time = g_order_save_info['dutyTime']
     check_save_order(g_order_save_info['code'],
                      g_order_save_info['department'],
                      g_order_save_info['date'],
-                     g_order_save_info['key'], sms_code)
+                     g_order_save_info['key'],
+                     sms_code,
+                     duty_time)
     g_order_save_info.clear()
 
 
@@ -304,7 +329,7 @@ def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
             if 'state' in data:
                 state = data['state']
                 if state == 'OK' or state == 'NEED_CONFIRM':
-                    save_order(code, department, date, key, sms_code)
+                    save_order(code, department, date, key, sms_code, duty_time)
                     return True
                 elif state == 'TOAST':
                     msg = data['msg']
@@ -315,13 +340,19 @@ def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
                         if 'period' in duty_detail:
                             period = duty_detail['period']
                             if isinstance(period, dict):
-                                duty_time = period['dutyTime']
-                                print(f'新的就诊时段 {duty_time}')
-                                check_save_order(code, department, date, key, duty_time=duty_time)
+                                period_duty_time = period['dutyTime']
+                                print(f'新的就诊时段 {period_duty_time}')
+                                check_save_order(code, department, date, key, period_duty_time)
+                            elif isinstance(period, list):
+                                for period_item in period:
+                                    period_duty_time = period_item['dutyTime']
+                                    print(f'新的就诊时段 {period_duty_time}')
+                                    check_save_order(code, department, date, key, period_duty_time)
+                                    break
 
 
 # 保存订单
-def save_order(code, department, date, key, sms_code=''):
+def save_order(code, department, date, key, sms_code='', duty_time='0'):
     card = g_patient_info['cardList'][0]
     post_content_map = {
         'hosCode': code,
@@ -335,7 +366,7 @@ def save_order(code, department, date, key, sms_code=''):
         'jytCardId': '',
         'hospitalCardId': '',
         'phone': g_patient_info['phone'],
-        'dutyTime': 0,
+        'dutyTime': duty_time,
     }
     if g_topic_key is not None and len(str(g_topic_key).split('-')) > 1:
         post_content_map['orderFrom'] = str(g_topic_key).split('-')[1]
