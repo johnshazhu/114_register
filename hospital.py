@@ -6,7 +6,7 @@ import notification_util
 import register
 import timer
 
-LOOP_QUERY_DELAY = 10
+LOOP_QUERY_DELAY = 'autoDelay'
 KEYWORD = 'keyword'
 DEPARTMENT = 'department'
 LOOP = 'loop'
@@ -14,6 +14,7 @@ deadline = None
 hospital_code_name_map = {}
 department_name_code_map = {}
 loop = 0
+loop_query_delay = 10
 
 
 # 获取医院列表
@@ -74,7 +75,7 @@ def get_hospital_department_list(hos_code):
                             if not found:
                                 notification_util.show_notification('是否可预约', '暂无可预约的号')
                         else:
-                            repeat_timer = timer.RepeatingTimer(LOOP_QUERY_DELAY, check_duty_and_register,
+                            repeat_timer = timer.RepeatingTimer(loop_query_delay, check_duty_and_register,
                                                                 args=[hos_code, sub_dep_1_code, sub_dep_2_code])
                             repeat_timer.start()
                         return True
@@ -95,6 +96,10 @@ if __name__ == '__main__':
     ssl._create_default_https_context = ssl._create_unverified_context
 
     api.load_config_info()
+    if LOOP_QUERY_DELAY in api.config_dict:
+        loop_query_delay = api.config_dict[LOOP_QUERY_DELAY]
+        if len(loop_query_delay) > 0:
+            loop_query_delay = int(loop_query_delay)
     deadline = api.config_dict['deadline']
     if LOOP in api.config_dict:
         loop_config = api.config_dict[LOOP]
