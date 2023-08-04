@@ -134,10 +134,28 @@ def parse_hospital_department_duty_info(code, department, resp, deadline, availa
                                         duty_time = period['dutyTime']
                                         print(f'dict 就诊时段 {duty_time}')
                                     elif isinstance(period, list):
+                                        concat_start_duty_time = ''
+                                        # 根据配置的预约时段匹配
+                                        config_duty_time = api.config_dict['dutyTime']
+                                        # 预约时段 0900-0930
+                                        if len(str(config_duty_time)) == len('0900-0930') and str(
+                                                config_duty_time).__contains__('-'):
+                                            start = str(config_duty_time).split('-')[0]
+                                            end = str(config_duty_time).split('-')[1]
+                                            # date 2023-08-05
+                                            register_date = str(date).replace('-', '')
+                                            # concat_start_duty_time = 202308050900
+                                            concat_start_duty_time = str(config_duty_time) + str(start)
+                                            # concat_end_duty_time = 20230800930
+                                            concat_end_duty_time = str(config_duty_time) + str(end)
                                         for period_item in period:
                                             duty_time = period_item['dutyTime']
-                                            print(f'list 就诊时段 {duty_time}')
-                                            break
+                                            # 202308120805-202308120835
+                                            duty_time_view = period_item['dutyTimeView']
+                                            current_period_start_duty_time = str(duty_time).split('-')[0]
+                                            if len(concat_start_duty_time) > 0 and int(current_period_start_duty_time) >= int(concat_start_duty_time):
+                                                print(f'list 就诊时段 {duty_time}, ${duty_time_view}')
+                                                break
                                 g_order_save_info['dutyTime'] = duty_time
                                 confirm_resp = register_confirm(key, date, g_topic_key, code, department, duty_time)
                                 parse_register_confirm_info(confirm_resp, code, date, department, key)
@@ -172,6 +190,13 @@ def parse_department_day_duty_info(hospital, duty_info):
                 if 'detail' in item and isinstance(item['detail'], list):
                     for detail_item in item['detail']:
                         if isinstance(detail_item, dict):
+                            if 'doctorName' in detail_item:
+                                doctor_name = detail_item['doctorName']
+                                # 指定预约挂号的医生，但这次未匹配到则查看下一个
+                                if str(api.config_dict['doctorName']) > 0 and \
+                                        str(api.config_dict['doctorName']) != str(doctor_name):
+                                    continue
+
                             if 'fcode' in detail_item and 'ncode' in detail_item:
                                 fcode = detail_item['fcode']
                                 ncode = detail_item['ncode']
@@ -218,7 +243,9 @@ def parse_register_confirm_info(resp, code, date, department, key):
             title = data['doctorTitleName']
             fee = data['serviceFee']
             visit_time = data['visitTime']
-            print(f'{visit_time} {name} {depart} {title} {fee}')
+            doctor = data['doctorName']
+            g_order_save_info['confirmToken'] = data['confirmToken']
+            print(f'{visit_time} {name} {depart} {doctor} {title} {fee}')
             if 'dataItem' in data:
                 data_item = data['dataItem']
                 if isinstance(data_item, dict):
@@ -340,15 +367,39 @@ def check_save_order(code, department, date, key, sms_code='', duty_time='0'):
                         if 'period' in duty_detail:
                             period = duty_detail['period']
                             if isinstance(period, dict):
+                                # 没有具体的预约时段
                                 period_duty_time = period['dutyTime']
-                                print(f'新的就诊时段 {period_duty_time}')
+                                duty_time_view = period['dutyTimeView']
+                                print(f'新的就诊时段 {period_duty_time}, {duty_time_view}')
                                 check_save_order(code, department, date, key, period_duty_time)
                             elif isinstance(period, list):
+                                concat_start_duty_time = ''
+                                # 根据配置的预约时段匹配
+                                config_duty_time = api.config_dict['dutyTime']
+                                # 预约时段 0900-0930
+                                if len(str(config_duty_time)) == len('0900-0930') and str(
+                                        config_duty_time).__contains__('-'):
+                                    start = str(config_duty_time).split('-')[0]
+                                    end = str(config_duty_time).split('-')[1]
+                                    # date 2023-08-05
+                                    register_date = str(date).replace('-', '')
+                                    # concat_start_duty_time = 202308050900
+                                    concat_start_duty_time = str(config_duty_time) + str(start)
+                                    # concat_end_duty_time = 20230800930
+                                    concat_end_duty_time = str(config_duty_time) + str(end)
                                 for period_item in period:
                                     period_duty_time = period_item['dutyTime']
-                                    print(f'新的就诊时段 {period_duty_time}')
-                                    check_save_order(code, department, date, key, period_duty_time)
-                                    break
+                                    duty_time_view = period_item['dutyTimeView']
+                                    current_period_start_duty_time = str(period_duty_time).split('-')[0]
+                                    if len(concat_start_duty_time) > 0:
+                                        if int(current_period_start_duty_time) >= int(concat_start_duty_time):
+                                            print(f'新的就诊时段 {period_duty_time}, {duty_time_view}')
+                                            check_save_order(code, department, date, key, period_duty_time)
+                                            break
+                                    else:
+                                        print(f'新的就诊时段 {period_duty_time}, {duty_time_view}')
+                                        check_save_order(code, department, date, key, period_duty_time)
+                                        break
 
 
 # 保存订单
@@ -367,6 +418,8 @@ def save_order(code, department, date, key, sms_code='', duty_time='0'):
         'hospitalCardId': '',
         'phone': g_patient_info['phone'],
         'dutyTime': duty_time,
+        'orderFrom': 'HOSP',
+        'confirmToken': g_order_save_info['confirmToken']
     }
     if g_topic_key is not None and len(str(g_topic_key).split('-')) > 1:
         post_content_map['orderFrom'] = str(g_topic_key).split('-')[1]

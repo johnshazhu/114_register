@@ -130,4 +130,5 @@ dmypy.json
 
 .idea
 data/config.property
+*.json
 
