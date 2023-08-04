@@ -10,7 +10,6 @@ LOOP_QUERY_DELAY = 'autoDelay'
 KEYWORD = 'keyword'
 DEPARTMENT = 'department'
 LOOP = 'loop'
-DUTY_TIME = 'dutyTime'
 deadline = None
 hospital_code_name_map = {}
 department_name_code_map = {}
